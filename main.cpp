@@ -6,75 +6,111 @@
 #include <set>
 #include <cassert>
 
-#define REGISTER_BINARY_OPERATOR(op) \
-GlValue<T> operator op(const GlValue<T> &other) const {\
-    if (m_context.m_mode == Mode::Codegen) {                                                \
-        std::string my_str = PopStringValue();                                              \
-        m_context.m_stack.push_back(my_str + " " + #op + " " + other.PopStringValue());     \
-        return GlValue<T>(m_context);                                                  \
-    }                                                                                       \
-    return GlValue<T>(m_context);                                                      \
-}
+#define REGISTER_BINARY_OP(name, op) \
+    template<typename S, typename T = decltype(S() op S())>                                            \
+    class name ## BinaryOpExprNode : public BinaryOpExprNode<S, T> { \
+    public:                                    \
+        name ## BinaryOpExprNode(ExprNodePtr<S> left, ExprNodePtr<S> right) \
+            : BinaryOpExprNode<S, T>(#op, std::move(left), std::move(right)) {}              \
+                                                \
+        T GetValue() override {                 \
+            return this->m_left->GetValue() op this->m_right->GetValue();                                        \
+        }                                        \
+    };                                    \
+                                          \
+    template<typename S, typename T = decltype(S() op S())>                                            \
+    friend GlValue<T> operator op(const GlValue<S> &lhs, const GlValue<S> &rhs) {\
+        return GlValue<T>(lhs.m_context, std::make_shared<name ## BinaryOpExprNode<S, T>>(lhs.m_expr, rhs.m_expr)); \
+    }                                     \
+                                          \
+    template<typename S, typename T = decltype(S() op S())>                                            \
+    friend GlValue<T> operator op(const GlValue<S> &lhs, const S &rhs) {\
+        return GlValue<T>(lhs.m_context, std::make_shared<name ## BinaryOpExprNode<S, T>>(lhs.m_expr, std::make_shared<ConstExprNode<S>>(rhs))); \
+    }
 
-#define REGISTER_BINARY_BOOL_OPERATOR(op)                                                   \
-GlValue<bool> operator op(const GlValue<T> &other) const {                        \
-    if (m_context.m_mode == Mode::Codegen) {                                                \
-        std::string my_str = PopStringValue();                                              \
-        m_context.m_stack.push_back(my_str + " " + #op + " " + other.PopStringValue());     \
-        return GlValue<bool>(m_context);                                               \
-    }                                                                                       \
-    return GlValue<bool>(m_context);                                                   \
-}
 
-#define PP_SEQ_N() 9, 8, 7, 6, 5, 4, 3, 2, 1, 0
-#define PP_ARG_N(_1, _2, _3, _4, _5, _6, _7, _8, _9, N, ...) N
-#define NUM_ARGS_(...) PP_ARG_N(__VA_ARGS__)
-#define NUM_ARGS(...) NUM_ARGS_(__VA_ARGS__,PP_SEQ_N())
+#define REGISTER_ALL_OP() \
+    REGISTER_BINARY_OP(Add, +)      \
+    REGISTER_BINARY_OP(Sub, -)      \
+    REGISTER_BINARY_OP(Mul, *)      \
+    REGISTER_BINARY_OP(Mod, %)      \
+    REGISTER_BINARY_OP(Div, /)      \
+    REGISTER_BINARY_OP(OrBit, |)    \
+    REGISTER_BINARY_OP(AndBit, &) \
+    REGISTER_BINARY_OP(Eq, ==) \
+    REGISTER_BINARY_OP(Leq, <=) \
+    REGISTER_BINARY_OP(Grq, >=) \
+    REGISTER_BINARY_OP(Le, <) \
+    REGISTER_BINARY_OP(Gr, >) \
 
 #define FUNCTION_ARGS_CREF_4(type, name, ...) const GlValue<type> & name
 #define FUNCTION_ARGS_CREF_3(type, name, ...) const GlValue<type> & name __VA_OPT__(, FUNCTION_ARGS_CREF_4(__VA_ARGS__))
 #define FUNCTION_ARGS_CREF_2(type, name, ...) const GlValue<type> & name __VA_OPT__(, FUNCTION_ARGS_CREF_3(__VA_ARGS__))
 #define FUNCTION_ARGS_CREF_1(type, name, ...) const GlValue<type> & name __VA_OPT__(, FUNCTION_ARGS_CREF_2(__VA_ARGS__))
+#define FUNCTION_ARGS_CREF(...) __VA_OPT__(FUNCTION_ARGS_CREF_1(__VA_ARGS__))
+
+#define FUNCTION_GEN_GL_VALUE_TYPES_4(type, name, ...) GlValue<type>
+#define FUNCTION_GEN_GL_VALUE_TYPES_3(type, name, ...) GlValue<type> __VA_OPT__(, FUNCTION_GEN_GL_VALUE_TYPES_4(__VA_ARGS__))
+#define FUNCTION_GEN_GL_VALUE_TYPES_2(type, name, ...) GlValue<type> __VA_OPT__(, FUNCTION_GEN_GL_VALUE_TYPES_3(__VA_ARGS__))
+#define FUNCTION_GEN_GL_VALUE_TYPES_1(type, name, ...) GlValue<type> __VA_OPT__(, FUNCTION_GEN_GL_VALUE_TYPES_2(__VA_ARGS__))
+#define FUNCTION_GEN_GL_VALUE_TYPES(...) __VA_OPT__(FUNCTION_GEN_GL_VALUE_TYPES_1(__VA_ARGS__))
 
 #define FUNCTION_GEN_TYPES_4(type, name, ...) type
 #define FUNCTION_GEN_TYPES_3(type, name, ...) type __VA_OPT__(, FUNCTION_GEN_TYPES_4(__VA_ARGS__))
 #define FUNCTION_GEN_TYPES_2(type, name, ...) type __VA_OPT__(, FUNCTION_GEN_TYPES_3(__VA_ARGS__))
 #define FUNCTION_GEN_TYPES_1(type, name, ...) type __VA_OPT__(, FUNCTION_GEN_TYPES_2(__VA_ARGS__))
+#define FUNCTION_GEN_TYPES(...) __VA_OPT__(FUNCTION_GEN_TYPES_1(__VA_ARGS__))
 
 #define FUNCTION_GEN_NAMES_4(type, name, ...) name
 #define FUNCTION_GEN_NAMES_3(type, name, ...) name __VA_OPT__(, FUNCTION_GEN_NAMES_4(__VA_ARGS__))
 #define FUNCTION_GEN_NAMES_2(type, name, ...) name __VA_OPT__(, FUNCTION_GEN_NAMES_3(__VA_ARGS__))
 #define FUNCTION_GEN_NAMES_1(type, name, ...) name __VA_OPT__(, FUNCTION_GEN_NAMES_2(__VA_ARGS__))
+#define FUNCTION_GEN_NAMES(...) __VA_OPT__(FUNCTION_GEN_NAMES_1(__VA_ARGS__))
 
 #define FUNCTION_GEN_NAMES_4_STR(type, name, ...) #name
 #define FUNCTION_GEN_NAMES_3_STR(type, name, ...) #name __VA_OPT__(, FUNCTION_GEN_NAMES_4_STR(__VA_ARGS__))
 #define FUNCTION_GEN_NAMES_2_STR(type, name, ...) #name __VA_OPT__(, FUNCTION_GEN_NAMES_3_STR(__VA_ARGS__))
 #define FUNCTION_GEN_NAMES_1_STR(type, name, ...) #name __VA_OPT__(, FUNCTION_GEN_NAMES_2_STR(__VA_ARGS__))
+#define FUNCTION_GEN_NAMES_STR(...) __VA_OPT__(FUNCTION_GEN_NAMES_1_STR(__VA_ARGS__))
 
-#define FUNCTION_GEN_ARG_4(type, name, ...) GlValue<type>(*this, #name, name.m_value)
-#define FUNCTION_GEN_ARG_3(type, name, ...) GlValue<type>(*this, #name, name.m_value) __VA_OPT__(, FUNCTION_GEN_ARG_4(__VA_ARGS__))
-#define FUNCTION_GEN_ARG_2(type, name, ...) GlValue<type>(*this, #name, name.m_value) __VA_OPT__(, FUNCTION_GEN_ARG_3(__VA_ARGS__))
-#define FUNCTION_GEN_ARG_1(type, name, ...) GlValue<type>(*this, #name, name.m_value) __VA_OPT__(, FUNCTION_GEN_ARG_2(__VA_ARGS__))
+#define FUNCTION_GEN_ARG_4(type, name, ...) GlValue<type>(this, std::make_shared<VarExprNode<type>>(#name, name.GetValue()))
+#define FUNCTION_GEN_ARG_3(type, name, ...) GlValue<type>(this, std::make_shared<VarExprNode<type>>(#name, name.GetValue())) __VA_OPT__(, FUNCTION_GEN_ARG_4(__VA_ARGS__))
+#define FUNCTION_GEN_ARG_2(type, name, ...) GlValue<type>(this, std::make_shared<VarExprNode<type>>(#name, name.GetValue())) __VA_OPT__(, FUNCTION_GEN_ARG_3(__VA_ARGS__))
+#define FUNCTION_GEN_ARG_1(type, name, ...) GlValue<type>(this, std::make_shared<VarExprNode<type>>(#name, name.GetValue())) __VA_OPT__(, FUNCTION_GEN_ARG_2(__VA_ARGS__))
+#define FUNCTION_GEN_ARG(...) __VA_OPT__(FUNCTION_GEN_ARG_1(__VA_ARGS__))
 
 #define _FUNC_GEN_TYPE(ret_type, func, ...) \
-    GlFunctionGenerator<ret_type, FUNCTION_GEN_TYPES_1(__VA_ARGS__)>
+    GlFunctionGenerator<ret_type __VA_OPT__( ,FUNCTION_GEN_TYPES(__VA_ARGS__))>
 
 #define _FUNC_GEN_(ret_type, func, ...) \
-    _FUNC_GEN_TYPE(ret_type, func, __VA_ARGS__)(*m_active_context, #func, FUNCTION_GEN_NAMES_1_STR(__VA_ARGS__))
+    _FUNC_GEN_TYPE(ret_type, func, __VA_ARGS__)(*this, #func __VA_OPT__(, FUNCTION_GEN_NAMES_STR(__VA_ARGS__)))
 
 #define GLSL_FUNCTION(ret_type, func, ...)                                                  \
-    GlValue<ret_type> func(FUNCTION_ARGS_CREF_1(__VA_ARGS__)) {                                  \
-        PutArgsToStack(FUNCTION_GEN_NAMES_1(__VA_ARGS__));\
-        return _gl_func_ ## func(FUNCTION_GEN_ARG_1(__VA_ARGS__), _FUNC_GEN_(ret_type, func, __VA_ARGS__), NUM_ARGS(__VA_ARGS__)/2);                                                        \
-    }                                                                                       \
-    GlValue<ret_type> _gl_func_ ## func(FUNCTION_ARGS_CREF_1(__VA_ARGS__),  \
-        _FUNC_GEN_TYPE(ret_type, func, __VA_ARGS__) _func_gen, \
-        int _num_args, ret_type _ret_type = ret_type())
+    GlValue<ret_type> func(FUNCTION_ARGS_CREF(__VA_ARGS__)) {                               \
+        auto func_lambda = [&](FUNCTION_ARGS_CREF(__VA_ARGS__)) { _impl_ ## func(FUNCTION_GEN_NAMES(__VA_ARGS__)); }; \
+        if (m_mode == Mode::Codegen) {                                                      \
+            auto func_gen = _FUNC_GEN_(ret_type, func, __VA_ARGS__);                        \
+            if (!IsFuncGenerated(func_gen.m_signature)) {                                   \
+                m_func_ready.insert(func_gen.m_signature);                                                                            \
+                func_lambda(FUNCTION_GEN_ARG(__VA_ARGS__));                                                                                \
+                func_gen.Complete();                                                         \
+            }                                                                                   \
+        }\
+        return GlValue<ret_type>(this, std::make_shared<FunctionCallExprNode<ret_type, FUNCTION_GEN_GL_VALUE_TYPES(__VA_ARGS__)>>(*this, #func, func_lambda, FUNCTION_GEN_NAMES(__VA_ARGS__)));\
+    }         \
+    void _impl_ ## func(FUNCTION_ARGS_CREF(__VA_ARGS__))
 
-#define GLSL_RETURN(ret)        \
-    _func_gen.Complete(_num_args, (_func_gen.m_ready ? GlValue<decltype(_ret_type)>(*this) : ret));       \
-    return GlValue<decltype(_ret_type)>(*this)
+#define VAR(type, name, ...) auto name = Var<type>(#name __VA_OPT__(,__VA_ARGS__))
 
+#define VAR_IN(type, name) \
+    GlShaderContext::GlValue<type> name = Var<type>(#name, "in"); \
+    void _add_context_ptr ## name() {m_context_pointers.push_back(&name.m_context);} \
+    int _tmp_helper_ ## name =  (_add_context_ptr ## name(),0);
+
+#define VAR_OUT(type, name) \
+    GlShaderContext::GlValue<type> name = Var<type>(#name, "out"); \
+    void _add_context_ptr ## name() {m_context_pointers.push_back(&name.m_context);} \
+    int _tmp_helper_ ## name =  (_add_context_ptr ## name(),0);
 
 #define ENABLE_TYPE(type)       \
 template<>                      \
@@ -82,109 +118,197 @@ std::string TypeStr<type>() {   \
     return #type;               \
 }
 
+#define ENABLE_ALL_TYPES() \
+    ENABLE_TYPE(int);  \
+    ENABLE_TYPE(float);\
+    ENABLE_TYPE(bool); \
+    ENABLE_TYPE(double); \
+
+
 template<typename T>
 std::string TypeStr();
-
-ENABLE_TYPE(int);
-
-ENABLE_TYPE(float);
-
-ENABLE_TYPE(bool);
 
 template<typename... T>
 std::vector<std::string> TypesStr() {
     return {TypeStr<T>()...};
 }
 
-class GlShader {
-public:
-    static GlShader *m_active_context; // todo: remove this somehow?
+template<typename T>
+std::string ValStr(const T &val) {
+    return std::to_string(val);
+}
 
-    virtual void main() {}
+template<>
+std::string ValStr<bool>(const bool &val) {
+    return val ? "true" : "false";
+}
 
-    std::string GetCode() {
-        m_mode = Mode::Codegen;
-        m_code_buffer = "";
-        m_active_context = this;
+ENABLE_ALL_TYPES();
 
-        main();
-
-        return m_code_buffer;
-    }
-
+class GlShaderContext {
 protected:
     enum class Mode {
         Execution,
         Codegen
     } m_mode = Mode::Execution;
 
-    std::string StackPop() {
-        assert(!m_stack.empty());
-        auto val = std::move(m_stack.back());
-        m_stack.pop_back();
-        return val;
-    }
+    template<typename T>
+    struct ExprNode {
+        explicit ExprNode(std::string str_val)
+                : m_str_value(std::move(str_val)) {}
 
+        [[nodiscard]] std::string GetStringValue() const {
+            return m_str_value;
+        }
+
+        virtual T GetValue() = 0;
+
+    protected:
+        std::string m_str_value;
+    };
+
+    template<typename T>
+    using ExprNodePtr = std::shared_ptr<ExprNode<T>>;
+
+    template<typename T>
+    struct ConstExprNode : public ExprNode<T> {
+        explicit ConstExprNode(const T &value)
+                : ExprNode<T>(ValStr(value)), m_value(value) {}
+
+        T GetValue() override {
+            return m_value;
+        }
+
+    protected:
+        T m_value;
+    };
+
+    template<typename T>
+    struct VarExprNode : public ExprNode<T> {
+        explicit VarExprNode(std::string name, const T &value = T())
+                : ExprNode<T>(name), m_value(value) {}
+
+        T GetValue() override {
+            return m_value;
+        }
+
+        void Set(const T &value) {
+            m_value = value;
+        }
+
+    protected:
+        T m_value;
+    };
+
+    template<typename S, typename T>
+    struct BinaryOpExprNode : public ExprNode<T> {
+    public:
+        BinaryOpExprNode(const std::string &op, ExprNodePtr<S> left, ExprNodePtr<S> right)
+                : ExprNode<T>("(" + left->GetStringValue() + op + right->GetStringValue() + ")"),
+                  m_left(std::move(left)),
+                  m_right(std::move(right)) {}
+
+    protected:
+        ExprNodePtr<S> m_left;
+        ExprNodePtr<S> m_right;
+    };
+
+public:
     template<typename T>
     struct GlValue {
     public:
-        std::string m_name;
-        bool m_isOnStack = true;
-        bool m_needParenthesis = false;
-        GlShader &m_context;
-        T m_value = T();
+        ExprNodePtr<T> m_expr;
+        GlShaderContext *m_context = nullptr;
 
-        explicit GlValue(GlShader &context, bool needParenthesis = true)
-                : m_context(context), m_isOnStack(true), m_needParenthesis(needParenthesis) {}
+        explicit GlValue(ExprNodePtr<T> expr) : m_expr(std::move(expr)) {}
 
-        GlValue(GlShader &context, std::string name, T value)
-                : m_context(context), m_name(std::move(name)), m_isOnStack(false), m_value(std::move(value)) {}
+        GlValue(GlShaderContext *context, ExprNodePtr<T> expr)
+                : m_context(context), m_expr(std::move(expr)) {}
 
-        [[nodiscard]] std::string PopStringValue() const {
-            std::string r = m_isOnStack ? m_context.StackPop() : m_name;
-            return m_needParenthesis ? "(" + r + ")" : r;
+        [[nodiscard]] std::string GetStringValue() const {
+            return m_expr->GetStringValue();
         }
 
-        GlValue &operator=(const GlValue<T> &other) {
-            if (m_context.m_mode == Mode::Codegen) {
-                m_context.AddCodeLine(m_name + " = " + other.PopStringValue() + ";");
-            } else {
-                // todo:
+        [[nodiscard]] T GetValue() const {
+            return m_expr->GetValue();
+        }
+
+        GlValue &operator=(GlValue<T> other) {
+            if (this == &other)
+                return *this;
+            assert(std::dynamic_pointer_cast<VarExprNode<T>>(m_expr));
+            auto var_expr = std::dynamic_pointer_cast<VarExprNode<T>>(m_expr);
+            var_expr->Set(other.GetValue());
+            if (m_context && m_context->m_mode == Mode::Codegen) {
+                m_context->AddCodeLine(var_expr->GetStringValue() + " = " + other.GetStringValue() + ";");
             }
             return *this;
         }
 
-        REGISTER_BINARY_OPERATOR(+);
+        GlValue &operator=(const T &other) {
+            assert(std::dynamic_pointer_cast<VarExprNode<T>>(m_expr));
+            auto var_expr = std::dynamic_pointer_cast<VarExprNode<T>>(m_expr);
+            var_expr->Set(other);
+            if (m_context && m_context->m_mode == Mode::Codegen) {
+                m_context->AddCodeLine(var_expr->GetStringValue() + " = " + ValStr(other) + ";");
+            }
+            return *this;
+        }
 
-        REGISTER_BINARY_OPERATOR(-);
-
-        REGISTER_BINARY_OPERATOR(*);
-
-        REGISTER_BINARY_OPERATOR(%);
-
-        REGISTER_BINARY_OPERATOR(/);
-
-        REGISTER_BINARY_OPERATOR(|);
-
-        REGISTER_BINARY_OPERATOR(&);
-
-        REGISTER_BINARY_BOOL_OPERATOR(==);
-
-        REGISTER_BINARY_BOOL_OPERATOR(<);
-
-        REGISTER_BINARY_BOOL_OPERATOR(>);
-
-        REGISTER_BINARY_BOOL_OPERATOR(<=);
-
-        REGISTER_BINARY_BOOL_OPERATOR(>=);
-
-        REGISTER_BINARY_BOOL_OPERATOR(!=);
     };
 
-    struct ElseStatement {
-        GlShader &m_context;
+protected:
+    struct GlBreakValue {
+    };
 
-        explicit ElseStatement(GlShader &context) : m_context(context) {}
+    template<typename T, typename ... Args>
+    struct FunctionCallExprNode : public ExprNode<T> {
+        FunctionCallExprNode(GlShaderContext &context, const std::string &name, std::function<void(Args...)> func,
+                             Args ... args)
+                : ExprNode<T>(name), m_context(&context), m_args(std::make_tuple(args...)), m_func(std::move(func)) {
+
+            this->m_str_value += "(";
+            AddArgs(args...);
+            this->m_str_value += ")";
+        }
+
+        T GetValue() override {
+            if (m_context->m_mode == Mode::Codegen) {
+                return T();
+            }
+            try {
+                std::apply(m_func, m_args);
+            } catch (const GlValue<T> &r) {
+                return r.GetValue();
+            }
+            return T();
+        }
+
+    protected:
+        template<typename S>
+        void AddArgs(const GlValue<S> &arg) {
+            this->m_str_value += arg.GetStringValue();
+        }
+
+        template<typename S, typename ... ArgsS>
+        void AddArgs(const GlValue<S> &arg, ArgsS ... args) {
+            this->m_str_value += arg.GetStringValue() + ",";
+            AddArgs(args...);
+        }
+
+        std::function<void(Args...)> m_func;
+        std::tuple<Args...> m_args;
+        GlShaderContext *m_context;
+    };
+
+    REGISTER_ALL_OP();
+
+    struct ElseStatement {
+        GlShaderContext &m_context;
+        GlValue<bool> m_condition;
+
+        ElseStatement(GlShaderContext &context, const GlValue<bool> &condition)
+                : m_context(context), m_condition(condition) {}
 
         void Else(const std::function<void(void)> &func) {
             if (m_context.m_mode == Mode::Codegen) {
@@ -193,41 +317,120 @@ protected:
                 func();
                 m_context.DecCodeIndentation();
                 m_context.AddCodeLine("}");
+            } else {
+                if (!m_condition.GetValue()) {
+                    func();
+                }
             }
         }
     };
 
     struct ThenStatement {
-        GlShader &m_context;
+        GlShaderContext &m_context;
+        GlValue<bool> m_condition;
 
-        explicit ThenStatement(GlShader &context) : m_context(context) {}
+        ThenStatement(GlShaderContext &context, const GlValue<bool> &condition)
+                : m_context(context), m_condition(condition) {}
 
         ElseStatement Then(const std::function<void(void)> &func) {
             if (m_context.m_mode == Mode::Codegen) {
-                m_context.AddCodeLine("{", true);
+                m_context.AddCodeLine(" {", true);
                 m_context.IncCodeIndentation();
                 func();
                 m_context.DecCodeIndentation();
                 m_context.AddCodeLine("}");
+            } else {
+                if (m_condition.GetValue()) {
+                    func();
+                }
             }
-            return ElseStatement(m_context);
+            return ElseStatement(m_context, m_condition);
         }
     };
 
+    struct LoopStatement {
+        GlShaderContext &m_context;
+        GlValue<bool> m_condition;
+
+        explicit LoopStatement(GlShaderContext &context, const GlValue<bool> &condition)
+                : m_context(context), m_condition(condition) {}
+
+        void Do(const std::function<void(void)> &func) {
+            if (m_context.m_mode == Mode::Codegen) {
+                m_context.AddCodeLine(" {", true);
+                m_context.IncCodeIndentation();
+                func();
+                m_context.DecCodeIndentation();
+                m_context.AddCodeLine("}");
+            } else {
+                try {
+                    while (m_condition.GetValue()) {
+                        func();
+                    }
+                } catch (GlBreakValue &) {
+
+                }
+            }
+        }
+    };
+
+    template<typename T>
+    void Print(const GlValue<T> &var) {
+        if (m_mode == Mode::Codegen)
+            return;
+        std::cout << "(" << TypeStr<T>() << ") " << var.GetStringValue() << ": " << ValStr(var.GetValue()) << std::endl;
+    }
+
+    LoopStatement While(const GlValue<bool> &condition) {
+        if (m_mode == Mode::Codegen) {
+            AddCodeLine("while (" + condition.GetStringValue() + ")");
+        }
+        return LoopStatement(*this, condition);
+    }
+
     ThenStatement If(const GlValue<bool> &condition) {
         if (m_mode == Mode::Codegen) {
-            AddCodeLine("if (" + condition.PopStringValue() + ")");
+            AddCodeLine("if (" + condition.GetStringValue() + ")");
         }
-        // todo:
-        return ThenStatement(*this);
+        return ThenStatement(*this, condition);
+    }
+
+    void Break() {
+        if (m_mode == Mode::Execution) {
+            throw GlBreakValue(); // NOLINT(hicpp-exception-baseclass)
+        } else {
+            AddCodeLine("break;");
+        }
     }
 
     template<typename T>
-    GlValue<T> Make(const std::string &name, const T &val = T()) {
-        if (m_mode == Mode::Codegen) {
-            AddCodeLine(TypeStr<T>() + " " + name + " = " + std::to_string(val) + ";");
+    void Return(const GlValue<T> &val) {
+        if (m_mode == Mode::Execution) {
+            throw val; // NOLINT(hicpp-exception-baseclass)
+        } else {
+            AddCodeLine("return " + val.GetStringValue() + ";");
         }
-        return GlValue<T>(*this, name, val);
+    }
+
+    template<typename T>
+    void Return(const T &val) {
+        if (m_mode == Mode::Execution) {
+            throw GlValue<T>(this, std::make_shared<ConstExprNode<T>>(val)); // NOLINT(hicpp-exception-baseclass)
+        } else {
+            AddCodeLine("return " + ValStr(val) + ";");
+        }
+    }
+
+    bool IsFuncGenerated(const std::string &signature) {
+        return m_func_ready.find(signature) != m_func_ready.end();
+    }
+
+    template<typename T>
+    GlValue<T> Var(const std::string &name, const T &val = T()) {
+        if (m_mode == Mode::Codegen) {
+            AddCodeLine(TypeStr<T>() + " " + name + " = " + ValStr(val) + ";");
+        }
+        return GlValue<T>(this, std::make_shared<VarExprNode<T>>(name, val));
     }
 
     void AddCodeLine(const std::string &line, bool append_to_previous = false) {
@@ -251,100 +454,157 @@ protected:
 
     template<typename RetType, typename ... ArgTypes>
     struct GlFunctionGenerator {
-        GlShader &m_context;
-        bool m_ready = false;
+        GlShaderContext &m_context;
         std::string m_code_buffer_copy;
         std::string m_indentation_copy;
-        std::string m_name;
+        std::string m_signature;
 
         template<typename ... T>
-        GlFunctionGenerator(GlShader &context, const std::string &name, T ...args):m_context(context), m_name(name) {
-            std::vector<std::string> names = {args...};
+        GlFunctionGenerator(GlShaderContext &context, const std::string &name, T ...args_name):m_context(context) {
+            std::vector<std::string> names = {args_name...};
             std::vector<std::string> types = TypesStr<ArgTypes...>();
-            std::string signature = TypeStr<RetType>() + " " + name + "(";
+            m_signature = TypeStr<RetType>() + " " + name + "(";
             assert(names.size() == types.size());
             for (size_t i = 0; i < names.size(); i++) {
-                signature += types[i] + " " + names[i];
+                m_signature += types[i] + " " + names[i];
                 if (i + 1 < names.size())
-                    signature += ", ";
+                    m_signature += ", ";
             }
-            signature += ")";
+            m_signature += ")";
 
-            if (context.m_func_ready.find(signature) == context.m_func_ready.end()) {
-                context.m_func_ready.insert(signature);
+            if (!m_context.IsFuncGenerated(m_signature)) {
                 m_code_buffer_copy = std::move(m_context.m_code_buffer);
                 m_indentation_copy = std::move(m_context.m_indentation);
-                m_context.AddCodeLine(signature + " {");
+                m_context.AddCodeLine(m_signature + " {");
                 m_context.IncCodeIndentation();
-            } else {
-                m_ready = true;
             }
         }
 
-        template<typename T>
-        void Complete(int num_args, const GlValue<T> & ret) {
-            if (!m_ready) {
-                m_context.AddCodeLine("return " + ret.PopStringValue() + ";");
-                m_context.DecCodeIndentation();
-                m_context.AddCodeLine("}");
-                m_context.m_code_buffer += m_code_buffer_copy;
-                m_context.m_indentation = m_indentation_copy;
-            }
-            std::string call = m_name + "(";
-            for (int i = 0; i < num_args; i++) {
-                call += m_context.StackPop();
-                if (i + 1 < num_args)
-                    call += ", ";
-            }
-            call += ")";
-            m_context.m_stack.emplace_back(call);
+        void Complete() {
+            m_context.DecCodeIndentation();
+            m_context.AddCodeLine("}\n");
+            m_context.m_code_buffer += m_code_buffer_copy;
+            m_context.m_indentation = m_indentation_copy;
         }
     };
-
-    void PutArgsToStack() {}
-
-    template<typename T, typename ... Args>
-    void PutArgsToStack(const GlValue<T> & arg, Args ... args) {
-        std::string s = arg.m_name;
-        if (arg.m_isOnStack) {
-            s = StackPop();
-        }
-        PutArgsToStack(args...);
-        m_stack.push_back(s);
-    }
 
     std::set<std::string> m_func_ready;
     std::string m_indentation;
     std::string m_code_buffer;
-    std::vector<std::string> m_stack; // used while generating code
+
+    friend class GlShaderInOut;
 };
 
-GlShader *GlShader::m_active_context = nullptr;
-
-
-class MyShader : public GlShader {
+template<typename In, typename Out>
+class GlShader : public GlShaderContext {
 public:
 
-    GLSL_FUNCTION(int, func, int, x, int, c) {
-        GLSL_RETURN(x * x + c);
+    virtual void main(In in, Out &out) {}
+
+    std::string GetCode() {
+        m_mode = Mode::Codegen;
+        m_code_buffer = "";
+
+        In in;
+        Out out;
+        in.InitCodeGen(*this);
+        out.InitCodeGen(*this);
+        std::string inout_code = std::move(m_code_buffer);
+        AddCodeLine("void main() {");
+        IncCodeIndentation();
+        main(in, out);
+        DecCodeIndentation();
+        AddCodeLine("}");
+
+        m_code_buffer = inout_code + "\n" + m_code_buffer;
+
+        return m_code_buffer;
     }
 
-    GLSL_FUNCTION(int, func_2, int, x, int, y) {
-        GLSL_RETURN(func(x + y, x - y));
+    Out Execute(In in) {
+        m_mode = Mode::Execution;
+
+        Out out;
+        main(in, out);
+
+        return out;
     }
 
-    void main() override {
-        auto x = Make<int>("x", 5);
-        auto y = Make<int>("y", 1);
-        auto c = Make<bool>("c", false);
-        x = x + x;
-        If(x < y).Then([&] {
-            x = x + y;
-            y = x * y;
-        }).Else([&] {
-            y = func_2(y + x, x * y);
-            y = func_2(x, x + y);
+    friend class GlShaderInOut;
+};
+
+struct GlShaderInOut {
+protected:
+    template<typename In, typename Out>
+    friend
+    class GlShader;
+
+    struct VarInOut {
+        std::string prefix;
+        std::string type;
+        std::string name;
+    };
+
+    std::vector<VarInOut> m_variables;
+    std::vector<GlShaderContext **> m_context_pointers;
+
+    template<typename In, typename Out>
+    void InitCodeGen(GlShader<In, Out> &shader) {
+        for (auto &ptr : m_context_pointers) {
+            *ptr = &shader;
+        }
+        for (const auto &[prefix, type, name] : m_variables) {
+            std::string line = prefix + " " + type + " " + name + ";";
+            shader.AddCodeLine(line);
+        }
+    }
+
+    template<typename T>
+    GlShaderContext::GlValue<T> Var(const std::string &name, const std::string &prefix, const T &val = T()) {
+        m_variables.emplace_back(VarInOut{prefix, TypeStr<T>(), name});
+        return GlShaderContext::GlValue<T>(std::make_shared<GlShaderContext::VarExprNode<T>>(name, val));
+    }
+};
+
+struct GlShaderIn : public GlShaderInOut {
+private:
+};
+
+struct GlShaderOut : public GlShaderInOut {
+private:
+};
+
+struct MyShaderIn : public GlShaderIn {
+    VAR_IN(int, pixel);
+    VAR_IN(int, texel);
+};
+
+struct MyShaderOut : public GlShaderOut {
+    VAR_OUT(int, color);
+};
+
+class MyShader : public GlShader<MyShaderIn, MyShaderOut> {
+public:
+
+    GLSL_FUNCTION(int, fib, int, n) {
+        If(n < 2).Then([&] {
+            Return(n);
         });
+        Return(fib(n - 1) + fib(n - 2));
+    }
+
+    void main(MyShaderIn in, MyShaderOut &out) override {
+        VAR(int, i, 0);
+
+        While(i < 16).Do([&] {
+            Print(fib(i));
+            i = i + 1;
+            If(i == 10).Then([&] {
+                Break();
+            });
+        });
+
+        out.color = fib(i);
     }
 };
 
@@ -352,6 +612,7 @@ int main() {
     MyShader shader;
     std::cout << "=== GLSL CODE ===" << std::endl;
     std::cout << shader.GetCode() << std::endl;
-    std::string a;
+
+    shader.Execute(MyShaderIn());
     return 0;
 }
