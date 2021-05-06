@@ -1,51 +1,85 @@
+# CppGLSL 
+[**Experiment**] [**Work in progress**]
+
+
+#### Todo
+- [ ] glm vectors, matrices etc (swizzling etc.)
+- [ ] glsl functions (min, max, step, sign etc)
+- [ ] uniforms
+- [ ] textures (samplers)
+- [ ] structures (!)
+- [ ] for loop
+- [ ] native glsl code injection
+
+Code example to show current features:
+
 ```cpp
-class MyShader : public GlShader {
-public:
+struct MyShaderIn : public GlShaderIn {
+    VAR_IN(int, pixel);
+    VAR_IN(int, texel);
+};
 
-    GLSL_FUNCTION(int, func, int, x, int, c) {
-        GLSL_RETURN(x * x + c);
-    }
+struct MyShaderOut : public GlShaderOut {
+    VAR_OUT(int, color);
+};
 
-    GLSL_FUNCTION(int, func_2, int, x, int, y) {
-        GLSL_RETURN(func(x + y, x - y));
-    }
-
-    void main() override {
-        auto x = Make<int>("x", 5);
-        auto y = Make<int>("y", 1);
-        auto c = Make<bool>("c", false);
-        x = x + x;
-        If(x < y).Then([&] {
-            x = x + y;
-            y = x * y;
-        }).Else([&] {
-            y = func_2(y + x, x * y);
-            y = func_2(x, x + y);
+struct MyShader : public GlShader<MyShaderIn, MyShaderOut> {
+    GLSL_FUNCTION(int, fib, int, n) {
+        If(n < 2).Then([&] {
+            Return(n);
         });
+        Return(fib(n - 1) + fib(n - 2));
+    }
+
+    void main(MyShaderIn in, MyShaderOut &out) {
+        VAR(int, i, 0);
+
+        While(i < 16).Do([&] {
+            Print(fib(i));
+            i = i + 1;
+            If(i == 10).Then([&] {
+                Break();
+            });
+        });
+
+        out.color = fib(i);
     }
 };
 ```
 `MyShader().GetCode()` will generate:
 ```
-int func(int x, int c) {
-    return ((x * x) + c);
-}
+in int pixel;
+in int texel;
+out int color;
 
-int func_2(int x, int y) {
-    return (func(x + y, x - y));
+int fib(int n) {
+    if ((n<2)) {
+        return n;
+    }
+    return (fib((n-1))+fib((n-2)));
 }
 
 void main() {
-    int x = 5;
-    int y = 1;
-    bool c = 0;
-    x = (x + x);
-    if ((x < y)){
-        x = (x + y);
-        y = (x * y);
-    } else {
-        y = (func_2(y + x, x * y));
-        y = (func_2(x, x + y));
+    int i = 0;
+    while ((i<16)) {
+        i = (i+1);
+        if ((i==10)) {
+            break;
+        }
     }
+    color = fib(i);
 }
+```
+And you can execute the code with `MyShader().Execute(input)`, code from example will generate this output:
+```
+(int) fib(i): 0
+(int) fib(i): 1
+(int) fib(i): 1
+(int) fib(i): 2
+(int) fib(i): 3
+(int) fib(i): 5
+(int) fib(i): 8
+(int) fib(i): 13
+(int) fib(i): 21
+(int) fib(i): 34
 ```
